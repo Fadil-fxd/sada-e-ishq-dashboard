@@ -117,5 +117,5 @@ $('refresh').onclick=load;
 db.channel('programs-live').on('postgres_changes',{event:'*',schema:'public',table:'programs'},()=>load()).subscribe((status)=>{if(status==='SUBSCRIBED')setStatus('LIVE • realtime connected')});
 load();
 </script>
-<script src="chart-enhancement.js"></script>\n</body>
+</body>
 </html>
