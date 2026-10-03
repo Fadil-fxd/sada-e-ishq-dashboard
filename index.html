@@ -118,5 +118,5 @@ async function login(){const email=$('loginEmail').value.trim().toLowerCase(),pa
 $('search').oninput=e=>{state.q=e.target.value;render()};$('filterToggle').onclick=()=>$('filters').classList.toggle('show');$('modal').onclick=e=>{if(e.target===$('modal'))closeModal()};sb.auth.getSession().then(({data:{session}})=>{state.admin=session?.user?.email?.toLowerCase()===ADMIN_EMAIL;load()});sb.auth.onAuthStateChange((_event,session)=>{state.admin=session?.user?.email?.toLowerCase()===ADMIN_EMAIL;render()});sb.channel('programs-live').on('postgres_changes',{event:'*',schema:'public',table:'programs'},()=>load()).subscribe();readSnapshot();render();setInterval(()=>{if(!navigator.onLine)state.error=state.snapshotAt?'Offline: showing saved data.':'';},1000);
 })();
 </script>
-</body>
+<script src="chart-enhancement.js"></script>\n</body>
 </html>
