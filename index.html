@@ -136,5 +136,12 @@ window.addEventListener('online',()=>fetchPrograms(true));window.addEventListene
 render();
 })();
 </script>
-<script src="chart-enhancement.js"></script>\n</body>
+<script src="chart-enhancement.js"></script>\n<style id="sada-restore-older-ux-production">
+body> .app:first-of-type{display:none!important}
+body> .app:not(:first-of-type){display:block!important}
+.sada-reference-rail{display:flex!important}
+#sada-v3{display:none!important}
+@media(max-width:700px){.sada-reference-rail{display:none!important}.sada-mobile-rail{display:grid!important}}
+</style>
+</body>
 </html>
