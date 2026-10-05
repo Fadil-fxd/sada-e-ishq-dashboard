@@ -136,5 +136,26 @@ window.addEventListener('online',()=>fetchPrograms(true));window.addEventListene
 render();
 })();
 </script>
-<script src="chart-enhancement.js"></script>\n</body>
+<script src="chart-enhancement.js"></script>\n<style id="sada-whatsapp-automation">
+.wa-preview{width:min(620px,100%);max-height:92dvh;overflow:auto;background:#15161a;border:1px solid rgba(244,238,225,.18);border-radius:20px;box-shadow:0 30px 90px rgba(0,0,0,.6);padding:18px}
+.wa-preview-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.wa-preview-title{font:600 22px/1.1 var(--serif)}
+.wa-preview-note{margin-top:5px;font-size:9px;color:#828880}
+.wa-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.wa-field{display:grid;gap:4px}.wa-field.wide{grid-column:1/-1}
+.wa-field label{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#80867f;font-weight:850}
+.wa-field input{width:100%;min-height:42px;background:#101114;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:0 10px;outline:none}
+.wa-message{margin-top:12px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0f1013;color:#f4eee1;font-size:11px;line-height:1.55;white-space:pre-wrap}
+.wa-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)}
+.wa-actions .btn{min-width:120px}
+@media(max-width:767px){.wa-preview{width:100%;border-radius:20px 20px 0 0;padding:15px}.wa-fields{grid-template-columns:1fr}.wa-field.wide{grid-column:auto}.wa-message{font-size:11px;max-height:42vh;overflow:auto}.wa-actions{position:sticky;bottom:0;background:#15161a;padding-bottom:2px}.wa-actions .btn{flex:1;min-height:46px}}
+</style>
+<script id="sada-whatsapp-automation">
+(()=>{const $=id=>document.getElementById(id),cleanPhone=v=>{let s=String(v||'').replace(/[^0-9+]/g,'');if(/^0?\d{10}$/.test(s))s='91'+s.replace(/^0/,'');else if(s.startsWith('+'))s=s.slice(1);return s},money=n=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(Number(n)||0),fmtDate=s=>s?new Date(s+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):'',esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])),wait=ms=>new Promise(r=>setTimeout(r,ms));
+function showWaPreview(p){const phone=cleanPhone(p.phone),balance=Math.max((Number(p.income)||0)-(Number(p.advance)||0),0),message=()=>{const lines=['*'+(p.type||'Muttippatt')+' - Event Booking*','','🎤 *Event Details:*','• 📅 *Date:* '+fmtDate(p.date),'• ⏰ *Time:* '+(p.time||'—'),'• 📍 *Place:* '+(p.place||'—'),'','*Client Details:*','• *Name:* '+(p.name||'—'),'• *Contact:* '+(p.phone||'—')];if(p.alt)lines.push('• *Alternative Contact:* '+p.alt);if(p.map)lines.push('• *Google Map Link:* '+p.map);lines.push('','*Payment Details*','• *Total:* '+money(p.income),'• *Advance:* '+money(p.advance),'• *Balance:* '+money(balance),'','Confirm ✅');return lines.join('\n')};const close=()=>{q('overlay').classList.remove('open');q('overlay').innerHTML='';document.body.style.overflow=''};const render=()=>{q('overlay').innerHTML='<div class="wa-preview" role="dialog" aria-modal="true"><div class="wa-preview-head"><div><div class="wa-preview-title">WhatsApp booking message</div><div class="wa-preview-note">Review the message before opening WhatsApp.</div></div><button class="btn icon" id="waClose">×</button></div><div class="wa-fields"><div class="wa-field"><label for="waTime">Time</label><input id="waTime" value="'+esc(p.time||'')+'" placeholder="11:00 am"></div><div class="wa-field"><label for="waAlt">Alternative contact</label><input id="waAlt" value="'+esc(p.alt||'')+'" placeholder="Optional"></div><div class="wa-field wide"><label for="waMap">Google Map link</label><input id="waMap" value="'+esc(p.map||'')+'" placeholder="Paste Google Maps link or venue link"></div></div><div class="wa-message" id="waMessage">'+esc(message())+'</div><div class="wa-actions"><button class="btn" id="waSkip">Skip</button><button class="btn primary" id="waOpen">Open WhatsApp</button></div></div>';q('overlay').classList.add('open');document.body.style.overflow='hidden';const sync=()=>{p.time=q('waTime').value.trim();p.alt=q('waAlt').value.trim();p.map=q('waMap').value.trim();q('waMessage').textContent=message()};['waTime','waAlt','waMap'].forEach(id=>q(id).addEventListener('input',sync));q('waClose').onclick=close;q('waSkip').onclick=close;q('waOpen').onclick=()=>{if(!phone){alert('Client contact number is missing.');return}window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(message()),'_blank','noopener');close()}};let watching=false;
+function watchSave(p){if(watching)return;watching=true;const started=Date.now(),poll=async()=>{if(Date.now()-started>15000){watching=false;return}if(!q('overlay')?.classList.contains('open')){watching=false;showWaPreview(p);return}await wait(250);poll()};poll()}
+document.addEventListener('click',e=>{const b=e.target.closest('#saveProgram');if(!b)return;const form=q('programForm');if(!form)return;const title=document.querySelector('.modal-title')?.textContent?.trim()||'';if(!/^Add program/i.test(title))return;watchSave({type:q('pType')?.value||'Muttippatt',date:q('pDate')?.value||'',place:q('pPlace')?.value?.trim()||'',name:q('pClient')?.value?.trim()||'',phone:q('pPhone')?.value?.trim()||'',income:+(q('pIncome')?.value||0),advance:+(q('pAdvance')?.value||0),time:'',alt:'',map:''})},true);
+})();
+</script>
+</body>
 </html>
