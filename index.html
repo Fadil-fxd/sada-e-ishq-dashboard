@@ -663,27 +663,33 @@ const baseWa=window.sadaOpenWhatsAppPreview;window.sadaOpenWhatsAppPreview=funct
     const placeInput=document.getElementById('pPlace');
     const selected=window.__seiSelectedPlace;
     const existing=window.__seiEditRow;
+    const code=placeInput?.value?.trim()||existing?.program_code||'';
+    const programTime=document.getElementById('seiProgramTime')?.value||existing?.program_time||'10:00';
     if(!selected){
       $('formError').textContent=existing?.maps_url
         ? 'Please select this venue from Google Maps again before saving.'
         : 'Select a venue from the Google Maps suggestions. Manual place names are not allowed.';
       return;
     }
-    const originalMap=selected.maps_url;
-    const ok=await originalSave(key);
-    if(!state.modal && ok!==false){
-      const code=placeInput?.value?.trim()||existing?.program_code;
-      try{
-        const current=programByKey(code)||state.programs.find(x=>x.program_code===code);
-        if(current?.id){
-          await sb.from('programs').update({maps_url:originalMap,place:selected.formattedAddress||selected.name}).eq('id',current.id);
-          await scheduleReminders({...current,place:selected.formattedAddress||selected.name,maps_url:originalMap,program_time:document.getElementById('seiProgramTime')?.value||current.program_time||'10:00'});
-          await fetchPrograms(true);
-          const latest=programByKey(code)||current;
-          showCalendarActions({...latest,maps_url:originalMap,place:selected.formattedAddress||selected.name});
-        }
-      }catch(e){console.warn('Calendar automation post-save failed',e)}
-    }
+    await originalSave(key);
+    const errorText=$('formError')?.textContent?.trim()||'';
+    if(errorText||!code)return;
+    try{
+      const {data:row,error}=await sb.from('programs').select('*').eq('program_code',code).maybeSingle();
+      if(error||!row)throw error||new Error('Saved program could not be reloaded.');
+      const finalPlace=selected.formattedAddress||selected.name;
+      const {error:updateError}=await sb.from('programs').update({
+        place:finalPlace,
+        maps_url:selected.maps_url,
+        program_time:programTime||null,
+        alt_phone:document.getElementById('pPhone')?.value?.trim()||null
+      }).eq('id',row.id);
+      if(updateError)throw updateError;
+      const finalProgram={...row,place:finalPlace,maps_url:selected.maps_url,program_time:programTime||null};
+      await scheduleReminders(finalProgram);
+      await fetchPrograms(true);
+      showCalendarActions(finalProgram);
+    }catch(e){console.warn('Calendar automation post-save failed',e);toast('Program saved, but calendar automation needs attention','err')}
   };
 
   const oldAdmin=window.renderAdmin;
