@@ -318,6 +318,7 @@ function render(){
  else if(state.route==='artist')renderArtistDashboard();
  else if(state.route==='artist-programs')renderArtistPrograms();
  bind();
+ if(state.auth.role==='artist' && window.__seiArtistPage) window.__seiArtistPage();
 }
 function bind(){
  document.querySelectorAll('[data-route]').forEach(b=>b.onclick=()=>b.dataset.route==='more'?openMore():setRoute(b.dataset.route));
@@ -795,12 +796,8 @@ const baseWa=window.sadaOpenWhatsAppPreview;window.sadaOpenWhatsAppPreview=funct
    if(state.auth.role!=='admin' && state.auth.role!=='artist') r='admin';
    baseSetRoute(r);
  };
- let painting=false;
- const observer=new MutationObserver(()=>{if(state.auth.role==='artist'&&!painting){setTimeout(()=>{if(state.auth.role==='artist')artistPage()},0)}});
- observer.observe($('view'),{childList:true});
- const originalArtistPage=artistPage;
- artistPage=function(){if(painting)return;painting=true;try{originalArtistPage()}finally{painting=false}};
  window.__seiArtistPage=artistPage;
+ 
  const gate=()=>{
    document.body.classList.toggle('artist-shell-only',state.auth.role==='artist');
    if(state.auth.role==='artist') artistPage();
