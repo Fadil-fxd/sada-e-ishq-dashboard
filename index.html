@@ -795,8 +795,11 @@ const baseWa=window.sadaOpenWhatsAppPreview;window.sadaOpenWhatsAppPreview=funct
    if(state.auth.role!=='admin' && state.auth.role!=='artist') r='admin';
    baseSetRoute(r);
  };
- const observer=new MutationObserver(()=>{if(state.auth.role==='artist')artistPage()});
+ let painting=false;
+ const observer=new MutationObserver(()=>{if(state.auth.role==='artist'&&!painting){setTimeout(()=>{if(state.auth.role==='artist')artistPage()},0)}});
  observer.observe($('view'),{childList:true});
+ const originalArtistPage=artistPage;
+ artistPage=function(){if(painting)return;painting=true;try{originalArtistPage()}finally{painting=false}};
  window.__seiArtistPage=artistPage;
  const gate=()=>{
    document.body.classList.toggle('artist-shell-only',state.auth.role==='artist');
