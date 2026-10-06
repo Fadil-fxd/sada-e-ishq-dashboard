@@ -108,7 +108,7 @@ const fmtLong=iso=>{const d=parseDate(iso);return d?new Intl.DateTimeFormat('en-
 const monthName=iso=>{const d=parseDate(iso);return d?new Intl.DateTimeFormat('en-IN',{month:'long',year:'numeric',timeZone:'UTC'}).format(d):'Unknown'};
 const statusLabel=s=>({confirmed:'Confirmed',enquiry:'Enquiry',completed:'Completed',cancelled:'Cancelled'}[String(s||'').toLowerCase()]||'Unknown');
 const effectiveStatus=r=>{const s=String(r.program_status||'confirmed').toLowerCase();if(s==='cancelled')return'cancelled';if(s==='completed')return'completed';if(s==='confirmed')return r.program_date&&r.program_date<todayISO()?'completed':'confirmed';if(s==='enquiry')return'enquiry';return s};
-const normalize=x=>({id:x.id,program_code:x.program_code||'',program_date:x.program_date||'',event_type:x.event_type||'',place:x.place||'',program_type:x.program_type||'',booking_source:x.booking_source||'',income:Number(x.income)||0,expense:Number(x.expense)||0,profit:(Number(x.income)||0)-(Number(x.expense)||0),advance_received:Number(x.advance_received)||0,balance_to_collect:Math.max((Number(x.income)||0)-(Number(x.advance_received)||0),0),program_status:String(x.program_status||'confirmed').toLowerCase(),contact_name:x.contact_name||'',contact_phone:x.contact_phone||'',notes:x.notes||'',created_at:x.created_at||'',updated_at:x.updated_at||'',updated_by:x.updated_by||''});
+const normalize=x=>({id:x.id,program_code:x.program_code||'',program_date:x.program_date||'',event_type:x.event_type||'',place:x.place||'',program_type:x.program_type||'',booking_source:x.booking_source||'',income:Number(x.income)||0,expense:Number(x.expense)||0,profit:(Number(x.income)||0)-(Number(x.expense)||0),advance_received:Number(x.advance_received)||0,balance_to_collect:Math.max((Number(x.income)||0)-(Number(x.advance_received)||0),0),program_status:String(x.program_status||'confirmed').toLowerCase(),contact_name:x.contact_name||'',contact_phone:x.contact_phone||'',notes:x.notes||'',created_at:x.created_at||'',updated_at:x.updated_at||'',updated_by:x.updated_by||'',program_time:x.program_time||'',maps_url:x.maps_url||'',alt_phone:x.alt_phone||''});
 const state={programs:[],artistAssignments:[],artistProfile:null,status:'connecting',auth:{role:'visitor',email:'',id:'',name:''},query:'',filters:{month:'',event:'',type:'',source:'',place:'',status:'',from:'',to:''},route:'overview',modal:null,selectedId:null,dataVersion:0,fromCache:false};
 function toast(msg,type='ok'){const n=document.createElement('div');n.className='toast '+type;n.innerHTML='<i></i><div>'+esc(msg)+'</div>';$('toastRoot').appendChild(n);setTimeout(()=>n.remove(),type==='err'?6000:3000)}
 function setConnection(s){state.status=s;const labels={connecting:'Connecting…',live:'Live',updating:'Updating…',offline:'Offline — showing saved records',retrying:'Reconnecting…'};$('connection').className='connection '+(s==='live'?'live':'');$('connection').innerHTML='<i></i><span>'+esc(labels[s]||s)+'</span>'}
@@ -471,5 +471,232 @@ function icsFor(p){const date=String(p.program_date||'').replaceAll('-','');cons
 window.seiDownloadICS=function(p){const blob=new Blob([icsFor(p)],{type:'text/calendar;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(p.program_code||'sada-e-ishq-program')+'.ics';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
 const baseWa=window.sadaOpenWhatsAppPreview;window.sadaOpenWhatsAppPreview=function(p){baseWa&&baseWa(p);setTimeout(()=>{const box=document.querySelector('.wa-actions');if(!box||box.querySelector('[data-sei-invoice]'))return;const id='INV-SEI-'+String(p?.code||p?.program_code||Date.now()).replace(/[^A-Za-z0-9-]/g,'-');const invoiceText='Sada-e-Ishq — THE VOICE OF LOVE\nBooking Confirmation '+id+'\nEvent: '+(p?.type||'Program')+'\nDate: '+(p?.date||'')+'\nVenue: '+(p?.place||'')+'\nClient: '+(p?.name||'')+'\nTotal: '+(typeof money==='function'?money(p?.income):'₹'+(p?.income||0))+'\nAdvance: '+(typeof money==='function'?money(p?.advance):'₹'+(p?.advance||0));const invoice=document.createElement('div');invoice.style='width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;font-size:11px';invoice.innerHTML='<b>'+id+'</b><div style="margin-top:4px;opacity:.7">Booking confirmation invoice</div>';box.parentElement.insertBefore(invoice,box);const b1=document.createElement('button');b1.className='btn';b1.dataset.seiInvoice='1';b1.textContent='Copy for Instagram';b1.onclick=async()=>{await navigator.clipboard?.writeText(invoiceText);if(typeof toast==='function')toast('Invoice copied for Instagram')};const b2=document.createElement('button');b2.className='btn';b2.textContent='Download .ics';b2.onclick=()=>window.seiDownloadICS({program_code:p?.code||id,program_date:p?.date,program_time:p?.time,event_type:p?.type,place:p?.place});box.appendChild(b1);box.appendChild(b2)},50)};
 })();
-</script><style id="sei-cleanup">.sei-clock{display:none!important}</style></body>
+</script><style id="sei-cleanup">.sei-clock{display:none!important}</style>
+<script id="sei-google-place-calendar">
+(()=> {
+  const stateKey='seiGooglePlacesLoaded';
+  let googleReady=null;
+  window.__seiSelectedPlace=null;
+
+  const esc2=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const mapsUrl=(name,id)=>{
+    const q=encodeURIComponent(name||'Selected place');
+    return id
+      ? 'https://www.google.com/maps/search/?api=1&query='+q+'&query_place_id='+encodeURIComponent(id)
+      : 'https://www.google.com/maps/search/?api=1&query='+q;
+  };
+
+  async function getKey(){
+    try{
+      const {data,error}=await sb.from('app_settings').select('value').eq('key','google_maps_api_key').maybeSingle();
+      if(error) return '';
+      const v=data?.value;
+      return typeof v==='string'?v.trim():String(v?.key||'').trim();
+    }catch{return ''}
+  }
+
+  async function saveKey(key){
+    const {error}=await sb.from('app_settings').upsert({key:'google_maps_api_key',value:JSON.stringify({key:key.trim()}),updated_at:new Date().toISOString()},{onConflict:'key'});
+    if(error) throw error;
+  }
+
+  async function loadGoogle(){
+    if(window.google?.maps?.importLibrary)return true;
+    if(googleReady)return googleReady;
+    googleReady=(async()=>{
+      const key=await getKey();
+      if(!key) return false;
+      await new Promise((resolve,reject)=>{
+        const old=document.getElementById('sei-google-maps-loader');
+        if(old){old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}
+        const s=document.createElement('script');
+        s.id='sei-google-maps-loader';
+        s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&v=weekly&loading=async';
+        s.async=true;s.defer=true;
+        s.onload=resolve;s.onerror=reject;
+        document.head.appendChild(s);
+      });
+      return !!window.google?.maps?.importLibrary;
+    })().catch(()=>false);
+    return googleReady;
+  }
+
+  function calendarUrl(p){
+    const date=String(p.program_date||'').replaceAll('-','');
+    const time=String(p.program_time||'10:00').slice(0,5).replace(':','');
+    const hh=Number(time.slice(0,2)||10),mm=time.slice(2)||'00';
+    const endH=Math.min(hh+3,23);
+    const start=date+'T'+String(hh).padStart(2,'0')+mm+'00';
+    const end=date+'T'+String(endH).padStart(2,'0')+mm+'00';
+    const title='Sada-e-Ishq — '+(p.event_type||'Program');
+    const details='THE VOICE OF LOVE\\nProgram: '+(p.program_code||'')+'\\nVenue: '+(p.place||'')+'\\nGoogle Maps: '+(p.maps_url||'');
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+      +'&text='+encodeURIComponent(title)
+      +'&dates='+start+'/'+end
+      +'&ctz=Asia%2FKolkata'
+      +'&details='+encodeURIComponent(details)
+      +'&location='+encodeURIComponent(p.place||'');
+  }
+
+  function ics(p){
+    const date=String(p.program_date||'').replaceAll('-','');
+    const time=String(p.program_time||'10:00').slice(0,5).replace(':','');
+    const hh=Number(time.slice(0,2)||10),mm=time.slice(2)||'00';
+    const endH=Math.min(hh+3,23);
+    const start=date+'T'+String(hh).padStart(2,'0')+mm+'00';
+    const end=date+'T'+String(endH).padStart(2,'0')+mm+'00';
+    return [
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Sada-e-Ishq//Operations OS//EN',
+      'CALSCALE:GREGORIAN','BEGIN:VEVENT',
+      'UID:'+encodeURIComponent(p.program_code||Date.now())+'@sadaeishq',
+      'DTSTART;TZID=Asia/Kolkata:'+start,'DTEND;TZID=Asia/Kolkata:'+end,
+      'SUMMARY:Sada-e-Ishq — '+String(p.event_type||'Program').replace(/[\\r\\n;]/g,' '),
+      'LOCATION:'+String(p.place||'').replace(/[\\r\\n;]/g,' '),
+      'URL:'+String(p.maps_url||''),
+      'DESCRIPTION:THE VOICE OF LOVE\\nProgram: '+String(p.program_code||'').replace(/[\\r\\n;]/g,' '),
+      'BEGIN:VALARM','TRIGGER:-P1D','ACTION:DISPLAY','DESCRIPTION:Sada-e-Ishq program tomorrow','END:VALARM',
+      'BEGIN:VALARM','TRIGGER:-PT2H','ACTION:DISPLAY','DESCRIPTION:Sada-e-Ishq soundcheck in 2 hours','END:VALARM',
+      'END:VEVENT','END:VCALENDAR'
+    ].join('\r\n');
+  }
+
+  function downloadICS(p){
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([ics(p)],{type:'text/calendar;charset=utf-8'}));
+    a.download=(p.program_code||'sada-e-ishq-program')+'.ics';
+    a.click();setTimeout(()=>URL.revokeObjectURL(a.href),800);
+  }
+
+  async function scheduleReminders(p){
+    try{
+      const {data:admins}=await sb.from('profiles').select('id').eq('role','admin').eq('active',true);
+      if(!admins?.length||!p.id||!p.program_date)return;
+      await sb.from('program_reminders').delete().eq('program_id',p.id).eq('audience','admin');
+      const base=new Date(p.program_date+'T'+String(p.program_time||'10:00').slice(0,5)+':00+05:30');
+      const rows=[{mins:1440,kind:'program_1d'},{mins:120,kind:'soundcheck_2h'}]
+        .map(x=>({program_id:p.id,recipient_id:admins[0].id,audience:'admin',due_at:new Date(base.getTime()-x.mins*60000).toISOString(),kind:x.kind,status:'scheduled'}))
+        .filter(x=>new Date(x.due_at)>new Date());
+      if(rows.length) await sb.from('program_reminders').insert(rows);
+    }catch(e){console.warn('Reminder scheduling skipped',e)}
+  }
+
+  function showCalendarActions(p){
+    const title='Calendar automation ready';
+    openOverlay('<div class="modal confirm"><div class="modal-head"><div><div class="eyebrow">PROGRAM AUTOMATION</div><div class="modal-title" style="margin-top:5px">'+esc2(title)+'</div><div class="modal-note">Google Calendar event, Google Maps place and .ics reminders are ready for '+esc2(p.program_code||'this program')+'.</div></div><button class="btn icon" data-close-overlay>×</button></div><div class="delete-summary"><span>Venue</span><b>'+esc2(p.place)+'</b><span>Date</span><b>'+esc2(p.program_date)+'</b><span>Time</span><b>'+esc2(p.program_time||'10:00')+'</b></div><div class="modal-foot" style="flex-wrap:wrap"><button class="btn" id="seiOpenMaps">Open Google Maps</button><button class="btn" id="seiDownloadICS">Download .ics</button><button class="btn primary" id="seiOpenCalendar">Add to Google Calendar</button></div></div>','calendar-actions');
+    $('seiOpenMaps').onclick=()=>window.open(p.maps_url||mapsUrl(p.place),'_blank','noopener');
+    $('seiDownloadICS').onclick=()=>downloadICS(p);
+    $('seiOpenCalendar').onclick=()=>window.open(calendarUrl(p),'_blank','noopener');
+  }
+
+  async function configureMaps(){
+    const existing=await getKey();
+    openOverlay('<div class="modal confirm"><div class="modal-head"><div><div class="eyebrow">GOOGLE PLACES</div><div class="modal-title" style="margin-top:5px">Connect Google Maps Places</div><div class="modal-note">Paste a Google Maps Platform browser key with Places API (New) enabled and restrict it to this Render domain.</div></div><button class="btn icon" data-close-overlay>×</button></div><div class="field" style="margin-top:14px"><label for="seiMapsKey">Browser API key</label><input id="seiMapsKey" type="password" autocomplete="off" value="'+esc2(existing)+'" placeholder="AIza..."></div><div id="seiMapsKeyErr" class="error-text" style="margin-top:8px"></div><div class="modal-foot"><button class="btn" data-close-overlay>Cancel</button><button class="btn primary" id="seiSaveMapsKey">Save & connect</button></div></div>','maps-key');
+    $('seiSaveMapsKey').onclick=async()=>{
+      const key=$('seiMapsKey').value.trim();
+      if(!key){$('seiMapsKeyErr').textContent='Enter the Google Maps browser key.';return}
+      const b=$('seiSaveMapsKey');b.disabled=true;b.textContent='Connecting…';
+      try{await saveKey(key);googleReady=null;await loadGoogle();if(!window.google?.maps?.importLibrary)throw Error('Google Maps could not load. Check the key, APIs and HTTP referrer restrictions.');closeOverlay();toast('Google Places connected');}
+      catch(e){$('seiMapsKeyErr').textContent=e.message||'Unable to connect Google Maps.';b.disabled=false;b.textContent='Save & connect'}
+    };
+  }
+
+  async function mountPlacePicker(){
+    const input=document.getElementById('pPlace');
+    if(!input||input.dataset.googlePlaceMounted)return;
+    input.dataset.googlePlaceMounted='1';
+    const r=window.__seiEditRow;
+    const wrap=input.parentElement;
+    const status=document.createElement('div');
+    status.id='seiPlaceStatus';
+    status.className='section-note';
+    status.style='margin-top:5px';
+    status.textContent='Google Maps place selection required';
+    wrap.appendChild(status);
+
+    const ok=await loadGoogle();
+    if(!ok){
+      status.innerHTML='<span style="color:#e8c77b">Google Places is not connected.</span> <button type="button" class="btn small" id="seiConfigureMaps">Connect Google Maps</button>';
+      $('seiConfigureMaps').onclick=async()=>{await configureMaps();setTimeout(()=>mountPlacePicker(),150)};
+      input.placeholder='Connect Google Maps to search venues';
+      input.readOnly=true;
+      return;
+    }
+
+    const {PlaceAutocompleteElement}=await google.maps.importLibrary('places');
+    const picker=new PlaceAutocompleteElement();
+    picker.placeholder='Search Google Maps places…';
+    picker.includedRegionCodes=['in'];
+    picker.style.display='block';
+    picker.style.width='100%';
+    picker.style.marginTop='2px';
+
+    input.style.display='none';
+    wrap.insertBefore(picker,input);
+    if(r?.place){
+      status.textContent='Select the Google Maps result again to verify this venue.';
+      window.__seiSelectedPlace=null;
+    }
+    picker.addEventListener('gmp-select',async(ev)=>{
+      try{
+        const place=ev.placePrediction.toPlace();
+        await place.fetchFields({fields:['displayName','formattedAddress','location']});
+        const name=place.displayName||place.formattedAddress||'';
+        input.value=name;
+        window.__seiSelectedPlace={id:place.id,name,formattedAddress:place.formattedAddress||name,location:place.location,maps_url:mapsUrl(name,place.id)};
+        status.innerHTML='<span style="color:#78c095">✓ Google Maps place selected</span> · <button type="button" class="btn small" id="seiOpenSelectedMap">Open map</button>';
+        $('seiOpenSelectedMap').onclick=()=>window.open(window.__seiSelectedPlace.maps_url,'_blank','noopener');
+        state.modal.dirty=true;
+      }catch(e){status.textContent='Could not read the selected Google Maps place.'}
+    });
+  }
+
+  const originalOpen=window.openProgramModal;
+  window.openProgramModal=async function(key=''){
+    window.__seiSelectedPlace=null;
+    window.__seiEditRow=key&&typeof programByKey==='function'?programByKey(key):null;
+    originalOpen(key);
+    setTimeout(()=>{mountPlacePicker()},80);
+  };
+
+  const originalSave=window.saveProgram;
+  window.saveProgram=async function(key){
+    const placeInput=document.getElementById('pPlace');
+    const selected=window.__seiSelectedPlace;
+    const existing=window.__seiEditRow;
+    if(!selected){
+      $('formError').textContent=existing?.maps_url
+        ? 'Please select this venue from Google Maps again before saving.'
+        : 'Select a venue from the Google Maps suggestions. Manual place names are not allowed.';
+      return;
+    }
+    const originalMap=selected.maps_url;
+    const ok=await originalSave(key);
+    if(!state.modal && ok!==false){
+      const code=placeInput?.value?.trim()||existing?.program_code;
+      try{
+        const current=programByKey(code)||state.programs.find(x=>x.program_code===code);
+        if(current?.id){
+          await sb.from('programs').update({maps_url:originalMap,place:selected.formattedAddress||selected.name}).eq('id',current.id);
+          await scheduleReminders({...current,place:selected.formattedAddress||selected.name,maps_url:originalMap,program_time:document.getElementById('seiProgramTime')?.value||current.program_time||'10:00'});
+          await fetchPrograms(true);
+          const latest=programByKey(code)||current;
+          showCalendarActions({...latest,maps_url:originalMap,place:selected.formattedAddress||selected.name});
+        }
+      }catch(e){console.warn('Calendar automation post-save failed',e)}
+    }
+  };
+
+  const oldAdmin=window.renderAdmin;
+  window.renderAdmin=async function(){
+    if(typeof oldAdmin==='function')await oldAdmin();
+    if(state.auth.role==='admin' && document.querySelector('.admin-hero-actions') && !document.getElementById('seiMapsSetupBtn')){
+      const b=document.createElement('button');b.id='seiMapsSetupBtn';b.className='btn';b.textContent='Google Maps Setup';b.onclick=configureMaps;
+      document.querySelector('.admin-hero-actions').appendChild(b);
+    }
+  };
+
+  window.seiOpenProgramCalendar=(p)=>showCalendarActions(p);
+})();
+</script>
+</body>
 </html>
