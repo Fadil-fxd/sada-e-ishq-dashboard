@@ -273,15 +273,24 @@ async function openAssignmentModal(artistId){
  $('saveAssignmentBtn').onclick=async()=>{const programId=$('assignProgram').value;if(!programId){$('assignErr').textContent='Select a program.';return}const {error}=await sb.from('program_assignments').insert({program_id:Number(programId),artist_id:artistId,availability:'pending',approval:'none'});if(error){$('assignErr').textContent=/23505|duplicate/i.test(error.message)?'This artist is already assigned to that program.':mapError(error);return}closeOverlay();toast('Artist assigned');await renderArtists()};
 }
 async function updateAssignmentApproval(id,value){
- const {data:user}=await sb.auth.getUser();const {error}=await sb.from('program_assignments').update({approval:value,approved_by:user?.user?.id||null,approved_at:new Date().toISOString()}).eq('id',id);
- if(error)toast(mapError(error),'err');else{toast(value==='approved'?'Assignment approved':'Assignment declined');await renderArtists()}
+ if(value==='approved'){
+   const {error}=await sb.rpc('admin_approve_artist_assignment',{p_assignment_id:id});
+   if(error){toast(mapError(error),'err');return}
+   toast('Assignment approved — artist notified and reminders scheduled');
+ }else{
+   const {data:user}=await sb.auth.getUser();
+   const {error}=await sb.from('program_assignments').update({approval:value,approved_by:user?.user?.id||null,approved_at:new Date().toISOString()}).eq('id',id);
+   if(error){toast(mapError(error),'err');return}
+   toast('Assignment declined');
+ }
+ await fetchArtistAssignments();await renderArtists();
 }
 function renderAdmin(){if(state.auth.role==='admin'){$('view').innerHTML='<div class="admin-home"><div class="card admin-hero"><div><div class="eyebrow">COMMAND CENTER</div><div class="section-title">Sada-e-Ishq Admin</div><div class="section-note">Manage programs, finance, and the artist team from one protected workspace.</div></div><div class="admin-hero-actions"><button class="btn primary" data-add-program>+ Add program</button><button class="btn" data-route="artists">Artist Control</button><button class="btn" data-signout>Sign out</button></div></div><div class="kpis">'+kpi('Programs',String(state.programs.length),'live Supabase records')+kpi('Artists','—','open Artist Control')+kpi('Connection',state.status,'database')+kpi('Role','ADMIN','full access')+'</div></div>';return}$('view').innerHTML='<div class="card login-card"><div class="eyebrow">SECURE ACCESS</div><div class="section-title">Sign in to Sada-e-Ishq</div><div class="section-note">Use your admin or artist account. Access is determined by your Supabase profile.</div><form class="form" id="loginForm"><div class="field wide"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username"></div><div class="field wide"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><div class="field wide"><div id="loginErr" class="error-text"></div></div></form><div class="modal-foot"><button class="btn primary" id="loginBtn">Sign in</button></div></div>'}
 
 async function artistRespond(assignmentId,availability){
  const {error}=await sb.rpc('artist_respond_assignment',{p_assignment_id:assignmentId,p_availability:availability});
  if(error){toast(mapError(error),'err');return}
- await fetchArtistAssignments();render();toast(availability==='available'?'Marked available':'Marked unavailable');
+ await fetchArtistAssignments();render();toast(availability==='available'?'Availability sent to admin for approval':'Unavailable status sent to admin');
 }
 function artistProgramFor(a){return state.programs.find(p=>String(p.id)===String(a.program_id))}
 function renderArtistDashboard(){
@@ -357,7 +366,7 @@ async function hydrateAuth(user){
 }
 async function fetchArtistAssignments(){
  if(state.auth.role!=='artist'){state.artistAssignments=[];return}
- const {data,error}=await sb.from('program_assignments').select('*').eq('artist_id',state.auth.id).order('updated_at',{ascending:false});
+ const {data,error}=await sb.from('program_assignments').select('id,program_id,artist_id,availability,approval,responded_at,approved_at,updated_at').eq('artist_id',state.auth.id).order('updated_at',{ascending:false});
  if(error){console.error(error);state.artistAssignments=[];toast('Unable to load assignments','err');return}
  state.artistAssignments=data||[];
 }
@@ -372,8 +381,34 @@ async function login(){
 async function signOut(){await sb.auth.signOut();state.auth={role:'visitor',email:'',id:'',name:''};state.artistProfile=null;state.artistAssignments=[];state.programs=[];closeOverlay();closeDetails();toast('Signed out');render()}
 function detailOpen(key){return programByKey(key)}
 let fetching=false;
-async function fetchPrograms(force=false){if(!sb||fetching)return;fetching=true;if(state.status==='live'&&force)setConnection('updating');else setConnection('connecting');try{const {data,error}=await sb.from('programs').select('*').order('program_date',{ascending:true});if(error)throw error;state.programs=Array.isArray(data)?data.map(normalize):[];state.dataVersion++;state.fromCache=false;cacheSave();setConnection('live');render()}catch(e){console.error(e);if(!state.programs.length)cacheLoad();setConnection('offline');render()}finally{fetching=false}}
-const cached=cacheLoad();if(cached){state.status='offline';setConnection('offline')}readRoute();
+async function fetchPrograms(force=false){
+ if(!sb||fetching)return;
+ if(state.auth.role==='visitor'){state.programs=[];state.artistAssignments=[];setConnection('live');render();return}
+ fetching=true;
+ if(state.status==='live'&&force)setConnection('updating');else setConnection('connecting');
+ try{
+   let data,error;
+   if(state.auth.role==='artist'){
+     const r=await sb.rpc('get_my_artist_programs');
+     data=r.data; error=r.error;
+     state.programs=Array.isArray(data)?data.map(x=>normalize({...x,contact_name:null,contact_phone:null,alt_phone:null,income:null,expense:null,profit:null,advance_received:null,balance_to_collect:null,booking_source:null,notes:null})):[]; 
+   }else{
+     const r=await sb.from('programs').select('*').order('program_date',{ascending:true});
+     data=r.data; error=r.error;
+     state.programs=Array.isArray(data)?data.map(normalize):[];
+   }
+   if(error)throw error;
+   state.dataVersion++;state.fromCache=false;
+   if(state.auth.role==='admin')cacheSave();
+   setConnection('live');render();
+ }catch(e){
+   console.error(e);
+   if(state.auth.role==='admin'&&!state.programs.length)cacheLoad();
+   else state.programs=[];
+   setConnection(state.auth.role==='admin'?'offline':'live');render();
+ }finally{fetching=false}
+}
+const cached=state.auth.role==='admin'?cacheLoad():'';if(cached){state.status='offline';setConnection('offline')}readRoute();
 sb?.auth.getSession().then(async({data:{session}})=>{await hydrateAuth(session?.user||null);render();await fetchPrograms(true);if(state.auth.role==='artist')await fetchArtistAssignments();render()});
 sb?.auth.onAuthStateChange(async(_e,s)=>{await hydrateAuth(s?.user||null);if(state.auth.role!=='artist')state.artistAssignments=[];await fetchPrograms(true);render()});
 if(sb){let subscribed=false;const start=()=>{if(subscribed)return;subscribed=true;sb.channel('programs-live').on('postgres_changes',{event:'*',schema:'public',table:'programs'},payload=>{if(payload.eventType==='INSERT')state.programs.push(normalize(payload.new));if(payload.eventType==='UPDATE')state.programs=state.programs.map(r=>r.id===payload.new.id?normalize(payload.new):r);if(payload.eventType==='DELETE')state.programs=state.programs.filter(r=>r.id!==payload.old.id);state.dataVersion++;cacheSave();render();toast('Programs updated')}).subscribe(s=>{if(s==='SUBSCRIBED')setConnection('live')})};setTimeout(start,1800)}
@@ -713,5 +748,62 @@ const baseWa=window.sadaOpenWhatsAppPreview;window.sadaOpenWhatsAppPreview=funct
   window.seiOpenProgramCalendar=(p)=>showCalendarActions(p);
 })();
 </script>
-</body>
+<style id="sei-role-shell">
+.artist-shell-only .sidebar,.artist-shell-only .bottom-nav{display:none!important}
+.artist-shell-only .main{max-width:1180px;margin:0 auto;padding:22px 22px 50px}
+.artist-shell-only .artist-page-brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.artist-shell-only .artist-page-brand img{width:44px;height:44px;object-fit:contain;border-radius:12px}
+.artist-shell-only .artist-page-brand b{font:600 24px/1 var(--serif)}
+.artist-shell-only .artist-page-brand span{display:block;margin-top:4px;font-size:8px;letter-spacing:.14em;color:#888}
+.artist-shell-only .artist-feed{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
+.artist-shell-only .artist-feed-card{padding:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,#17140f,#0e1012)}
+.artist-shell-only .artist-event{padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:15px;background:rgba(255,255,255,.02);margin-top:8px}
+.artist-shell-only .artist-event h3{margin:5px 0;font:600 20px var(--serif)}
+.artist-shell-only .artist-event .artist-meta{display:flex;gap:7px;flex-wrap:wrap;color:#a6aba5;font-size:9px}
+.artist-shell-only .artist-event .artist-meta span{padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.04)}
+.artist-shell-only .artist-logout{margin-top:14px;width:100%}
+@media(max-width:767px){.artist-shell-only .main{padding:14px 10px 30px}.artist-shell-only .artist-feed{grid-template-columns:1fr}.artist-shell-only .artist-page-brand b{font-size:21px}}
+</style>
+<script id="sei-role-separated-pages">
+(()=> {
+ const originalRender=window.render;
+ const safeArtistProgram= p => ({
+   id:p.id,program_code:p.program_code,program_date:p.program_date,program_time:p.program_time,
+   event_type:p.event_type,program_type:p.program_type,place:p.place,maps_url:p.maps_url,
+   program_status:p.program_status,assignment_id:p.assignment_id,availability:p.availability,approval:p.approval
+ });
+ function artistPage(){
+   document.body.classList.add('artist-shell-only');
+   $('pageTitle').textContent='My Feed';
+   $('pageContext').textContent=state.artistProfile?.display_name||state.auth.name||'Artist';
+   $('topAdd').hidden=true;$('search').disabled=true;$('search').value='';
+   $('adminPill').classList.remove('show');
+   const rows=(state.programs||[]).filter(p=>p.program_date>=todayISO()).map(safeArtistProgram);
+   const profile=state.artistProfile||{};
+   $('view').innerHTML='<div class="artist-page-brand"><img src="assets/sada-e-ishq-logo.png" alt="Sada-e-Ishq"><div><b>Sada-e-Ishq</b><span>ARTIST PORTAL · PRIVATE FEED</span></div></div>'+
+    '<div class="artist-feed"><section class="artist-feed-card"><div class="eyebrow">UPCOMING EVENTS</div><div class="section-title" style="margin-top:5px">Your schedule</div><div class="section-note">Only programs assigned to '+esc(profile.display_name||'you')+' are shown.</div>'+
+    (rows.length?rows.map(p=>'<article class="artist-event"><div class="eyebrow">'+esc(fmtDate(p.program_date))+' · '+esc(p.program_time?String(p.program_time).slice(0,5):'Time TBA')+'</div><h3>'+esc(p.event_type||p.program_code)+'</h3><div class="artist-meta"><span>📍 '+esc(p.place||'Location TBA')+'</span><span>'+esc(p.program_type||'Program')+'</span><span class="pill '+(p.approval==='approved'?'confirmed':'enquiry')+'">'+esc(p.approval==='approved'?'CONFIRMED':'WAITING ADMIN')+'</span></div>'+
+    (p.approval!=='approved'?'<div class="artist-rsvp" style="margin-top:11px"><button class="btn primary small" data-artist-rsvp="'+esc(p.assignment_id)+'" data-value="available">I’m available</button><button class="btn small" data-artist-rsvp="'+esc(p.assignment_id)+'" data-value="unavailable">Unavailable</button></div>':'<div class="section-note" style="margin-top:10px">✓ Approved by admin · calendar/reminders scheduled</div>')+
+    '</article>').join(''):'<div class="empty-state" style="margin-top:16px">No upcoming assigned programs.</div>')+
+    '</section><aside class="artist-feed-card"><div class="eyebrow">MY ACCOUNT</div><div class="section-title" style="margin-top:5px">'+esc(profile.display_name||'Artist')+'</div><div class="section-note">'+esc(profile.instrument||'Artist')+'</div><div class="pills" style="margin-top:12px"><span class="pill confirmed">PRIVATE ACCESS</span><span class="pill">ARTIST</span></div><button class="btn artist-logout" data-artist-signout>Sign out</button></aside></div>';
+   document.querySelectorAll('[data-artist-rsvp]').forEach(b=>b.onclick=async()=>{b.disabled=true;await artistRespond(b.dataset.artistRsvp,b.dataset.value)});
+ }
+ window.render=window.render;
+ const baseSetRoute=window.setRoute;
+ window.setRoute=function(r){
+   if(state.auth.role==='artist' && !['artist'].includes(r)) r='artist';
+   if(state.auth.role!=='admin' && state.auth.role!=='artist') r='admin';
+   baseSetRoute(r);
+ };
+ const observer=new MutationObserver(()=>{if(state.auth.role==='artist')artistPage()});
+ observer.observe($('view'),{childList:true});
+ window.__seiArtistPage=artistPage;
+ const gate=()=>{
+   document.body.classList.toggle('artist-shell-only',state.auth.role==='artist');
+   if(state.auth.role==='artist') artistPage();
+ };
+ window.addEventListener('hashchange',gate);
+ setTimeout(gate,50);
+})();
+</script></body>
 </html>
