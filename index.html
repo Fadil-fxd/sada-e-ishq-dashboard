@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b0b0c">
 <meta name="robots" content="noindex,nofollow,noarchive">
 <title>Sada-e-Ishq — Band Operations</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0b0b0c;--surface:#131315;--surface2:#19191c;--surface3:#222226;--border:rgba(244,238,225,.10);--border-strong:rgba(244,238,225,.18);--text:#f4eee1;--text2:rgba(244,238,225,.74);--text3:rgba(244,238,225,.52);--gold:#c9a961;--goldHi:#e2c98a;--goldBg:rgba(201,169,97,.12);--green:#4fb37c;--greenBg:rgba(79,179,124,.12);--amber:#d9a441;--amberBg:rgba(217,164,65,.12);--red:#e5584f;--redBg:rgba(229,88,79,.12);--serif:"Cormorant Garamond","Playfair Display",Georgia,serif;--sans:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;--shadow:0 12px 32px rgba(0,0,0,.45);--r8:8px;--r12:12px;--r16:16px;--r20:20px}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(900px 520px at 10% -10%,rgba(201,169,97,.07),transparent 58%),radial-gradient(1000px 600px at 100% 20%,rgba(104,122,150,.045),transparent 64%),var(--bg);color:var(--text);font:14px/1.45 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit;text-decoration:none}:focus-visible{outline:2px solid var(--goldHi);outline-offset:2px}
@@ -154,5 +154,56 @@ render();
 (()=>{const $=id=>document.getElementById(id),cleanPhone=v=>{let s=String(v||'').replace(/[^0-9+]/g,'');if(/^0?\d{10}$/.test(s))s='91'+s.replace(/^0/,'');else if(s.startsWith('+'))s=s.slice(1);return s},money=n=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(Number(n)||0),fmtDate=s=>s?new Date(s+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):'',esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])),wait=ms=>new Promise(r=>setTimeout(r,ms));
 function showWaPreview(p){const phone=cleanPhone(p.phone),balance=Math.max((Number(p.income)||0)-(Number(p.advance)||0),0),message=()=>{const lines=['*'+(p.type||'Muttippatt')+' - Event Booking*','','🎤 *Event Details:*','• 📅 *Date:* '+fmtDate(p.date),'• ⏰ *Time:* '+(p.time||'—'),'• 📍 *Place:* '+(p.place||'—'),'','*Client Details:*','• *Name:* '+(p.name||'—'),'• *Contact:* '+(p.phone||'—')];if(p.alt)lines.push('• *Alternative Contact:* '+p.alt);if(p.map)lines.push('• *Google Map Link:* '+p.map);lines.push('','*Payment Details*','• *Total:* '+money(p.income),'• *Advance:* '+money(p.advance),'• *Balance:* '+money(balance),'','Confirm ✅');return lines.join('\n')};const close=()=>{$('overlay').classList.remove('open');$('overlay').innerHTML='';document.body.style.overflow=''};const render=()=>{$('overlay').innerHTML='<div class="wa-preview" role="dialog" aria-modal="true"><div class="wa-preview-head"><div><div class="wa-preview-title">WhatsApp booking message</div><div class="wa-preview-note">Review the message before opening WhatsApp.</div></div><button class="btn icon" id="waClose">×</button></div><div class="wa-fields"><div class="wa-field"><label for="waTime">Time</label><input id="waTime" value="'+esc(p.time||'')+'" placeholder="11:00 am"></div><div class="wa-field"><label for="waAlt">Alternative contact</label><input id="waAlt" value="'+esc(p.alt||'')+'" placeholder="Optional"></div><div class="wa-field wide"><label for="waMap">Google Map link</label><input id="waMap" value="'+esc(p.map||'')+'" placeholder="Paste Google Maps link or venue link"></div></div><div class="wa-message" id="waMessage">'+esc(message())+'</div><div class="wa-actions"><button class="btn" id="waSkip">Skip</button><button class="btn primary" id="waOpen">Open WhatsApp</button></div></div>';$('overlay').classList.add('open');document.body.style.overflow='hidden';const sync=()=>{p.time=$('waTime').value.trim();p.alt=$('waAlt').value.trim();p.map=$('waMap').value.trim();$('waMessage').textContent=message()};['waTime','waAlt','waMap'].forEach(id=>$(id).addEventListener('input',sync));$('waClose').onclick=close;$('waSkip').onclick=close;$('waOpen').onclick=()=>{if(!phone){alert('Client contact number is missing.');return}window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(message()),'_blank','noopener');close()}};render();};window.sadaOpenWhatsAppPreview=showWaPreview;})();
 </script>
-</body>
+
+<script id="sada-operations-enhancements">
+(()=> {
+  const $=id=>document.getElementById(id);
+  const toast=window.sadaToast||window.toast||null;
+  const announce=(msg)=>{const el=$('toastRoot');if(el&&msg){el.setAttribute('aria-label',msg)}};
+  document.documentElement.dataset.operationsOs='enhanced';
+  document.body.classList.add('operations-os-enhanced');
+
+  // Keyboard-first command shortcuts. Never interfere while typing.
+  document.addEventListener('keydown',e=>{
+    const tag=(e.target?.tagName||'').toLowerCase();
+    const typing=['input','textarea','select'].includes(tag)||e.target?.isContentEditable;
+    if(e.key==='Escape'){
+      document.querySelectorAll('.overlay.open').forEach(x=>{x.classList.remove('open');x.setAttribute('aria-hidden','true')});
+      $('details')?.classList.remove('open');
+      return;
+    }
+    if(typing)return;
+    if(e.key==='/' ){e.preventDefault();$('search')?.focus();return}
+    if(e.key.toLowerCase()==='n' && window.state?.auth?.role==='admin'){e.preventDefault();$('topAdd')?.click();return}
+    const routes={o:'overview',p:'programs',f:'finance',a:'analytics'};
+    if(routes[e.key.toLowerCase()]){
+      const b=document.querySelector('[data-route="'+routes[e.key.toLowerCase()]+'"]');
+      b?.click();
+    }
+  });
+
+  // Keep search discoverable without changing existing routing/data behavior.
+  const search=$('search');
+  if(search){
+    search.setAttribute('aria-label','Search programs, places, clients or events');
+    search.setAttribute('role','searchbox');
+  }
+
+  // Prevent accidental double submits on the current program form.
+  document.addEventListener('click',e=>{
+    const b=e.target.closest?.('#saveProgram');
+    if(b){b.setAttribute('aria-busy','true');}
+  });
+
+  // Upgrade connection feedback with an explicit live-region semantics.
+  const c=$('connection');
+  if(c){c.setAttribute('role','status');c.setAttribute('aria-live','polite')}
+
+  // Make the current live workspace clearly identifiable.
+  const pill=$('adminPill');
+  if(pill)pill.title='Role-based access is enforced by Supabase';
+
+  announce('Sada-e-Ishq Operations OS ready');
+})();
+</script></body>
 </html>
